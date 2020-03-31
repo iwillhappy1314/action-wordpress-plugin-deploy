@@ -39,7 +39,7 @@ echo "ℹ︎ VERSION is $VERSION"
 
 
 # if plugin version, readme version, git version mismatch, exit
-if [[ "$READMEVERSION" != "$PLUGINVERSION" ]] || [[ "$READMEVERSION" != "$VERSION" ]] || [[ "$PLUGINVERSION" != "$VERSION" ]]; then
+if [[ $READMEVERSION != $PLUGINVERSION || $READMEVERSION != $VERSION || $PLUGINVERSION != $VERSION ]]; then
 	exit 1
 fi
 echo "Version check pass"
