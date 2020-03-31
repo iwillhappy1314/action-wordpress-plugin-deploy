@@ -41,6 +41,7 @@ echo "ℹ︎ PLUGIN VERSION is $PLUGIN_VERSION"
 
 # if plugin version, readme version, git version mismatch, exit
 if [[ $README_VERSION != $PLUGIN_VERSION || $README_VERSION != $VERSION || $PLUGIN_VERSION != $VERSION ]]; then
+	echo "Version mismatch, exit"
 	exit 1
 fi
 echo "Version check pass"
