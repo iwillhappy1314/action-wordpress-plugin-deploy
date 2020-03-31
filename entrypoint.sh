@@ -27,8 +27,8 @@ fi
 echo "ℹ︎ SLUG is $SLUG"
 
 # get readme version and plugin version 
-README_VERSION=$(grep "Stable tag" "$GITHUB_WORKSPACE"/git/readme.txt | awk '{ print $NF}')
-PLUGIN_VERSION=$(grep "Version:" "$GITHUB_WORKSPACE"/git/"$SLUG".php | awk '{ print $NF}')
+README_VERSION=$(grep "Stable tag" "$GITHUB_WORKSPACE"/readme.txt | awk '{ print $NF}')
+PLUGIN_VERSION=$(grep "Version:" "$GITHUB_WORKSPACE"/"$SLUG".php | awk '{ print $NF}')
 
 # Does it even make sense for VERSION to be editable in a workflow definition?
 if [[ -z "$VERSION" ]]; then
@@ -38,7 +38,6 @@ fi
 echo "ℹ︎ GIT VERSION is $VERSION"
 echo "ℹ︎ README VERSION is $README_VERSION"
 echo "ℹ︎ PLUGIN VERSION is $PLUGIN_VERSION"
-
 
 # if plugin version, readme version, git version mismatch, exit
 if [[ $README_VERSION != $PLUGIN_VERSION || $README_VERSION != $VERSION || $PLUGIN_VERSION != $VERSION ]]; then
