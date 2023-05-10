@@ -2,8 +2,8 @@
 
 # Note that this does not use pipefail
 # because if the grep later doesn't match any deleted files,
-# which is likely the majority case,
-# it does not exit with a 0, and I only care about the final exit.
+# which is likely to be the case the majority of the time,
+# it does not exit with 0, as we are interested in the final exit.
 set -eo
 
 # Ensure SVN username and password are set
@@ -20,13 +20,17 @@ if [[ -z "$SVN_PASSWORD" ]]; then
 	exit 1
 fi
 
+if $INPUT_DRY_RUN; then
+	echo "ℹ︎ Dry run: No files will be committed to Subversion."
+fi
+
 # Allow some ENV variables to be customized
 if [[ -z "$SLUG" ]]; then
 	SLUG=${GITHUB_REPOSITORY#*/}
 fi
 echo "ℹ︎ SLUG is $SLUG"
 
-# get readme version and plugin version 
+# Get readme version and plugin version 
 README_VERSION=$(grep "Stable tag" "$GITHUB_WORKSPACE"/readme.txt | awk '{ print $NF}')
 PLUGIN_VERSION=$(grep "Version:" "$GITHUB_WORKSPACE"/"$SLUG".php | awk '{ print $NF}')
 
@@ -44,7 +48,7 @@ if [[ $README_VERSION != $PLUGIN_VERSION || $README_VERSION != $VERSION || $PLUG
 	echo "Version mismatch, exit"
 	exit 1
 fi
-echo "Version check pass"
+echo "Version check passed"
 
 if [[ -z "$ASSETS_DIR" ]]; then
 	ASSETS_DIR=".wordpress-org"
@@ -52,15 +56,15 @@ fi
 echo "ℹ︎ ASSETS_DIR is $ASSETS_DIR"
 
 SVN_URL="https://plugins.svn.wordpress.org/${SLUG}/"
-SVN_DIR="/github/svn-${SLUG}"
+SVN_DIR="${HOME}/svn-${SLUG}"
 
-# Checkout just trunk and assets for efficiency
-# Tagging will be handled on the SVN level
+# Checkout SVN repository.
 echo "➤ Checking out .org repository..."
 svn checkout --depth immediates "$SVN_URL" "$SVN_DIR"
 cd "$SVN_DIR"
 svn update --set-depth infinity assets
 svn update --set-depth infinity trunk
+svn update --set-depth immediates tags
 
 echo "➤ Copying files..."
 if [[ -e "$GITHUB_WORKSPACE/.distignore" ]]; then
@@ -74,8 +78,13 @@ else
 	cd "$GITHUB_WORKSPACE"
 
 	# "Export" a cleaned copy to a temp directory
-	TMP_DIR="/github/archivetmp"
+	TMP_DIR="${HOME}/archivetmp"
 	mkdir "$TMP_DIR"
+
+	# Workaround for: detected dubious ownership in repository at '/github/workspace' issue.
+	# see: https://github.com/10up/action-wordpress-plugin-deploy/issues/116
+	# Mark github workspace as safe directory.
+	git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
 	git config --global user.email "10upbot+github@10up.com"
 	git config --global user.name "10upbot on GitHub"
@@ -126,9 +135,43 @@ svn status | grep '^\!' | sed 's/! *//' | xargs -I% svn rm %@ > /dev/null
 echo "➤ Copying tag..."
 svn cp "trunk" "tags/$VERSION"
 
+# Fix screenshots getting force downloaded when clicking them
+# https://developer.wordpress.org/plugins/wordpress-org/plugin-assets/
+if test -d "$SVN_DIR/assets" && test -n "$(find "$SVN_DIR/assets" -maxdepth 1 -name "*.png" -print -quit)"; then
+    svn propset svn:mime-type "image/png" "$SVN_DIR/assets/"*.png || true
+fi
+if test -d "$SVN_DIR/assets" && test -n "$(find "$SVN_DIR/assets" -maxdepth 1 -name "*.jpg" -print -quit)"; then
+    svn propset svn:mime-type "image/jpeg" "$SVN_DIR/assets/"*.jpg || true
+fi
+if test -d "$SVN_DIR/assets" && test -n "$(find "$SVN_DIR/assets" -maxdepth 1 -name "*.gif" -print -quit)"; then
+    svn propset svn:mime-type "image/gif" "$SVN_DIR/assets/"*.gif || true
+fi
+if test -d "$SVN_DIR/assets" && test -n "$(find "$SVN_DIR/assets" -maxdepth 1 -name "*.svg" -print -quit)"; then
+    svn propset svn:mime-type "image/svg+xml" "$SVN_DIR/assets/"*.svg || true
+fi
+
+#Resolves => SVN commit failed: Directory out of date
+svn update
+
 svn status
 
-echo "➤ Committing files..."
-svn commit -m "Update to version $VERSION from GitHub" --no-auth-cache --non-interactive  --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+if $INPUT_DRY_RUN; then
+  echo "➤ Dry run: Files not committed."
+else
+  echo "➤ Committing files..."
+  svn commit -m "Update to version $VERSION from GitHub" --no-auth-cache --non-interactive  --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+fi
+
+if $INPUT_GENERATE_ZIP; then
+  echo "Generating zip file..."
+
+  # use a symbolic link so the directory in the zip matches the slug
+  ln -s "${SVN_DIR}/trunk" "${SVN_DIR}/${SLUG}"
+  zip -r "${GITHUB_WORKSPACE}/${SLUG}.zip" "$SLUG"
+  unlink "${SVN_DIR}/${SLUG}"
+
+  echo "zip-path=${GITHUB_WORKSPACE}/${SLUG}.zip" >> "${GITHUB_OUTPUT}"
+  echo "✓ Zip file generated!"
+fi
 
 echo "✓ Plugin deployed!"
